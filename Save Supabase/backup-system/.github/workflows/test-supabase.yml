@@ -1,0 +1,45 @@
+name: Test Supabase Connection
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-connection:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup Supabase CLI
+        run: npm install -g supabase
+
+      - name: Test Connection with postgres://
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          echo "Testing connection with current URL format..."
+          echo "URL format: postgres://..."
+          supabase db dump --db-url="$SUPABASE_DB_URL" --schema-only --file=test_schema.sql
+
+      - name: Test with postgresql:// format
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          echo "Testing with postgresql:// format..."
+          MODIFIED_URL=$(echo "$SUPABASE_DB_URL" | sed 's/^postgres:/postgresql:/')
+          echo "Modified URL format: postgresql://..."
+          supabase db dump --db-url="$MODIFIED_URL" --schema-only --file=test_schema2.sql
+
+      - name: Test with port 6543
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          echo "Testing with port 6543..."
+          MODIFIED_URL=$(echo "$SUPABASE_DB_URL" | sed 's/:5432/:6543/')
+          echo "Modified URL with port 6543"
+          supabase db dump --db-url="$MODIFIED_URL" --schema-only --file=test_schema3.sql
+
+      - name: Show connection details (without password)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          echo "Connection details:"
+          echo "$SUPABASE_DB_URL" | sed 's/:[^@]*@/:***@/'
