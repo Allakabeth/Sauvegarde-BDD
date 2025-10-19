@@ -21,21 +21,15 @@ jobs:
           echo "BACKUP_DIR=$BACKUP_DIR" >> $GITHUB_ENV
           echo "BACKUP_DATE=$(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
       
-      - name: 🔒 Backup database schema (structure)
+      - name: 📦 Backup complete database (schema public)
         run: |
-          echo "📦 Backing up database schema..."
-          supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" --schema public --schema-only > $BACKUP_DIR/schema.sql
-          echo "✅ Schema backup completed"
+          echo "📦 Backing up complete database (structure + data)..."
+          supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" --schema public > $BACKUP_DIR/database.sql
+          echo "✅ Database backup completed"
       
-      - name: 📊 Backup database data (données métier)
+      - name: 👥 Backup auth users
         run: |
-          echo "📦 Backing up database data..."
-          supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" --schema public --data-only > $BACKUP_DIR/data.sql
-          echo "✅ Data backup completed"
-      
-      - name: 👥 Backup auth users (utilisateurs)
-        run: |
-          echo "📦 Backing up auth users..."
+          echo "👥 Backing up auth users..."
           supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" --schema auth --data-only > $BACKUP_DIR/auth_users.sql
           echo "✅ Auth users backup completed"
       
@@ -52,175 +46,183 @@ jobs:
 
           ## 📦 CONTENU DE CE BACKUP
 
-          - `schema.sql` - Structure complète de la base (tables, contraintes, RLS, functions)
-          - `data.sql` - Toutes les données métier (users, planning, textes, etc.)
+          - `database.sql` - **BASE COMPLÈTE** (structure + données du schéma public)
           - `auth_users.sql` - Comptes utilisateurs et authentification
           - `RESTORE.md` - Ce guide
 
           ---
 
-          ## ⚠️ SCÉNARIOS DE RESTAURATION
+          ## 🔄 RESTAURATION SIMPLE
+
+          ### Commandes de restauration :
+
+          ```bash
+          # 1. Définir l'URL de connexion
+          export DB_URL="postgresql://postgres.mkbchdhbgdynxwfhpxbw:[PASSWORD]@aws-1-eu-west-3.pooler.supabase.com:5432/postgres"
+
+          # 2. Restaurer la base complète (structure + données)
+          psql $DB_URL < database.sql
+
+          # 3. Restaurer les utilisateurs
+          psql $DB_URL < auth_users.sql
+          ```
+
+          **C'est tout ! ✅**
+
+          ---
+
+          ## ⚠️ SCÉNARIOS D'UTILISATION
 
           ### Scénario A : Restauration sur le MÊME projet (Transparent)
 
-          **Utiliser quand :**
-          - Erreur humaine (DELETE accidentel, UPDATE destructeur)
+          **Quand utiliser :**
+          - Erreur humaine (DELETE accidentel)
+          - UPDATE destructeur
           - Migration ratée
           - Corruption de données
           - Erreur de Claude Code
 
           **Procédure :**
-
           ```bash
-          # 1. Se connecter au projet actuel
           export DB_URL="${{ secrets.SUPABASE_DB_URL }}"
-
-          # 2. Restaurer la structure
-          psql $DB_URL < schema.sql
-
-          # 3. Restaurer les données métier
-          psql $DB_URL < data.sql
-
-          # 4. Restaurer les utilisateurs
+          psql $DB_URL < database.sql
           psql $DB_URL < auth_users.sql
           ```
 
           **Résultat :**
           - ✅ **Restauration transparente**
           - ✅ Application continue de fonctionner
-          - ✅ Aucun changement d'URL
-          - ✅ Aucune intervention sur l'application
+          - ✅ Aucun changement d'URL nécessaire
           - ⏱️ Temps : 10-15 minutes
 
           ---
 
-          ### Scénario B : Restauration sur un NOUVEAU projet (Redéploiement)
+          ### Scénario B : Restauration sur un NOUVEAU projet
 
-          **Utiliser quand :**
-          - Projet Supabase détruit/supprimé
+          **Quand utiliser :**
+          - Projet Supabase détruit
           - Compte piraté
-          - Catastrophe totale
           - Migration vers nouveau projet
+          - Catastrophe totale
 
           **Procédure :**
 
-          ```bash
-          # 1. Créer un nouveau projet Supabase
-          # Via https://supabase.com/dashboard
-          # Notez le nouveau project-ref : XXXXXXX
+          1. **Créer nouveau projet Supabase**
+             - Via https://supabase.com/dashboard
+             - Notez le nouveau project-ref : `XXXXXXX`
 
-          # 2. Récupérer la nouvelle URL de connexion
-          # Settings > Database > Connection Pooling
-          export NEW_DB_URL="postgresql://postgres.XXXXXXX:[PASSWORD]@aws-1-eu-west-3.pooler.supabase.com:5432/postgres"
+          2. **Récupérer la nouvelle URL**
+             ```bash
+             export NEW_DB_URL="postgresql://postgres.XXXXXXX:[PASSWORD]@aws-1-eu-west-3.pooler.supabase.com:5432/postgres"
+             ```
 
-          # 3. Restaurer la structure
-          psql $NEW_DB_URL < schema.sql
+          3. **Restaurer les données**
+             ```bash
+             psql $NEW_DB_URL < database.sql
+             psql $NEW_DB_URL < auth_users.sql
+             ```
 
-          # 4. Restaurer les données
-          psql $NEW_DB_URL < data.sql
+          4. **Mettre à jour l'application**
+             
+             Fichier `.env.local` ou `.env.production` :
+             ```env
+             NEXT_PUBLIC_SUPABASE_URL=https://XXXXXXX.supabase.co
+             NEXT_PUBLIC_SUPABASE_ANON_KEY=[nouvelle_anon_key]
+             SUPABASE_SERVICE_ROLE_KEY=[nouvelle_service_role_key]
+             ```
 
-          # 5. Restaurer les utilisateurs
-          psql $NEW_DB_URL < auth_users.sql
-
-          # 6. Mettre à jour les variables d'environnement
-          # Fichier : .env.local ou .env.production
-          NEXT_PUBLIC_SUPABASE_URL=https://XXXXXXX.supabase.co
-          NEXT_PUBLIC_SUPABASE_ANON_KEY=[nouvelle_anon_key]
-          SUPABASE_SERVICE_ROLE_KEY=[nouvelle_service_role_key]
-
-          # 7. Redéployer l'application
-          vercel --prod  # ou votre méthode de déploiement
-          ```
+          5. **Redéployer**
+             ```bash
+             vercel --prod  # ou votre méthode
+             ```
 
           **Résultat :**
           - ✅ Toutes les données restaurées
           - ✅ Tous les utilisateurs conservés
-          - ⚠️ Nouvelle URL (changement unique)
-          - ⚠️ Redéploiement nécessaire
-          - ⏱️ Temps : 30-45 minutes
+          - ⚠️ Nouvelle URL (une seule fois)
+          - ⏱️ Temps total : 30-45 minutes
 
           ---
 
-          ## 🔒 CE QUI EST PROTÉGÉ
+          ## 🔒 PROTECTION
 
-          ### Protection Totale (Restauration Transparente) :
-          - ✅ DELETE accidentel
-          - ✅ UPDATE destructeur
-          - ✅ DROP TABLE par erreur
-          - ✅ Migration ratée
+          ### Ce backup protège contre :
+          - ✅ Erreurs humaines (DELETE, UPDATE, DROP)
+          - ✅ Migrations ratées
           - ✅ Corruption de données
-          - ✅ Erreur de Claude Code
-          - ✅ Modification RLS incorrecte
+          - ✅ Erreurs de Claude Code
+          - ✅ Destruction du projet Supabase
+          - ✅ Piratage / malveillance
+          - ✅ Catastrophes techniques
 
-          ### Protection Complète (Restauration avec Redéploiement) :
-          - ✅ Projet Supabase supprimé
-          - ✅ Compte piraté
-          - ✅ Catastrophe technique
-          - ✅ Malveillance extérieure
-
-          ---
-
-          ## ⏱️ CALENDRIER DES BACKUPS
-
-          - **Fréquence :** Chaque nuit à 2h00 UTC (3h00 Paris)
-          - **Rétention :** 7 derniers backups conservés
-          - **Perte maximale :** 24 heures de données
+          ### Perte maximale de données :
+          - **24 heures** (backup quotidien à 2h00 UTC)
 
           ---
 
           ## 📊 INFORMATIONS TECHNIQUES
 
-          **Tailles estimées :**
-          - schema.sql : 10-50 Ko
-          - data.sql : 500 Ko - 2 Mo
-          - auth_users.sql : 5-20 Ko
+          **Base de données :**
+          - 50+ tables dans le schéma public
+          - ~2000+ lignes de données
+          - RLS policies, functions, triggers inclus
+          - Extensions PostgreSQL incluses
 
-          **Tables sauvegardées :** 50+ tables
-          **Lignes estimées :** 2000+ lignes
-          **Utilisateurs :** Tous les comptes auth
+          **Fichiers :**
+          - `database.sql` : 500 Ko - 2 Mo (complet)
+          - `auth_users.sql` : 5-20 Ko (utilisateurs)
 
-          ---
-
-          ## 🆘 EN CAS D'URGENCE
-
-          1. **Identifier le problème**
-          2. **Choisir le bon scénario** (A ou B)
-          3. **Trouver le dernier backup valide** (avant l'incident)
-          4. **Suivre la procédure** étape par étape
-          5. **Vérifier** que l'application fonctionne
-          6. **Tester** une connexion utilisateur
+          **Rétention :** 7 derniers backups conservés
 
           ---
 
           ## ✅ CHECKLIST POST-RESTAURATION
 
-          - [ ] Base de données restaurée
-          - [ ] Schéma complet présent
-          - [ ] Données visibles dans l'app
+          - [ ] Base de données restaurée sans erreur
+          - [ ] Tables présentes dans Supabase Dashboard
+          - [ ] Données visibles dans l'application
           - [ ] Connexion utilisateur fonctionnelle
-          - [ ] RLS policies actives
-          - [ ] Application accessible
+          - [ ] RLS policies actives (vérifier dans Dashboard)
+          - [ ] Application accessible en production
           - [ ] Tests de base réussis
 
           ---
 
-          **Ce backup protège votre production contre toute catastrophe ! 🛡️**
+          ## 🆘 EN CAS DE PROBLÈME
+
+          **Si la restauration échoue :**
+
+          1. Vérifiez que PostgreSQL est installé (`psql --version`)
+          2. Vérifiez l'URL de connexion (accessible via `psql $DB_URL`)
+          3. Vérifiez que les fichiers SQL ne sont pas corrompus (`wc -l *.sql`)
+          4. Essayez un backup plus ancien si nécessaire
+
+          **Si l'application ne fonctionne pas :**
+
+          1. Vérifiez les variables d'environnement
+          2. Vérifiez que les RLS policies sont actives
+          3. Consultez les logs Supabase (Dashboard > Logs)
+          4. Testez une requête simple depuis le Dashboard
+
+          ---
+
+          **Votre production est protégée ! 🛡️**
           EOF
       
       - name: 📈 Show backup summary
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ BACKUP COMPLET PRODUCTION"
+          echo "✅ BACKUP PRODUCTION COMPLET"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📁 Backup directory: $BACKUP_DIR"
+          echo "📁 Directory: $BACKUP_DIR"
           echo ""
           echo "📦 Files created:"
           ls -lh $BACKUP_DIR/
           echo ""
-          echo "📊 File sizes:"
+          echo "📊 Sizes:"
           du -h $BACKUP_DIR/*
           echo ""
-          echo "📝 Line counts:"
+          echo "📝 Lines:"
           wc -l $BACKUP_DIR/*.sql $BACKUP_DIR/*.md
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
       
@@ -231,18 +233,16 @@ jobs:
           git add backups/
           git commit -m "💾 Backup PRODUCTION $(date '+%Y-%m-%d %H:%M:%S')
 
-          ✅ Schema (structure)
-          ✅ Data (données métier)  
-          ✅ Auth users (utilisateurs)
-          ✅ RESTORE.md (guide)
+          ✅ database.sql (structure + données public)
+          ✅ auth_users.sql (utilisateurs auth)
+          ✅ RESTORE.md (guide restauration)
           
-          🤖 Generated with Claude Code" || exit 0
+          🤖 Automated backup" || exit 0
           git push
       
       - name: 🧹 Cleanup old backups (keep last 7)
         run: |
           cd backups
-          # Compter les backups
           BACKUP_COUNT=$(ls -d */ 2>/dev/null | wc -l)
           echo "📊 Total backups: $BACKUP_COUNT"
           
@@ -253,5 +253,5 @@ jobs:
             git commit -m "🧹 Cleanup: Keep last 7 backups" || exit 0
             git push
           else
-            echo "✅ No cleanup needed ($BACKUP_COUNT backups)"
+            echo "✅ No cleanup needed"
           fi
