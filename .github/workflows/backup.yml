@@ -22,7 +22,7 @@ jobs:
       
       - name: Backup database
         run: |
-          supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" --roles-only > $BACKUP_DIR/roles.sql
+          supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" --role-only > $BACKUP_DIR/roles.sql
           supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" --schema-only > $BACKUP_DIR/schema.sql
           supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" --data-only > $BACKUP_DIR/data.sql
       
