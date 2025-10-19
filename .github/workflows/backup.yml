@@ -12,7 +12,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
+      
+      - name: Install PostgreSQL 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+          echo "✅ PostgreSQL 17 client installed"
+          pg_dump --version
       
       - name: Create backup directory
         run: |
@@ -21,17 +29,19 @@ jobs:
           echo "BACKUP_DIR=$BACKUP_DIR" >> $GITHUB_ENV
           echo "BACKUP_DATE=$(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
       
-      - name: 📦 Backup complete database (schema public)
+      - name: 📦 Backup complete database
         run: |
-          echo "📦 Backing up complete database (structure + data)..."
-          supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" --schema public > $BACKUP_DIR/database.sql
-          echo "✅ Database backup completed"
+          echo "📦 Backing up complete database..."
+          PGPASSWORD=$(echo "${{ secrets.SUPABASE_DB_URL }}" | sed 's/.*:\([^@]*\)@.*/\1/') \
+          pg_dump "${{ secrets.SUPABASE_DB_URL }}" > $BACKUP_DIR/database.sql
+          echo "✅ Database backup complete"
       
       - name: 👥 Backup auth users
         run: |
-          echo "👥 Backing up auth users..."
-          supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" --schema auth --data-only > $BACKUP_DIR/auth_users.sql
-          echo "✅ Auth users backup completed"
+          echo "👤 Backing up auth users..."
+          PGPASSWORD=$(echo "${{ secrets.SUPABASE_DB_URL }}" | sed 's/.*:\([^@]*\)@.*/\1/') \
+          pg_dump "${{ secrets.SUPABASE_DB_URL }}" --schema=auth --data-only > $BACKUP_DIR/auth_users.sql
+          echo "✅ Auth users backup complete"
       
       - name: 📝 Create restoration guide
         run: |
@@ -173,6 +183,10 @@ jobs:
           - `auth_users.sql` : 5-20 Ko (utilisateurs)
 
           **Rétention :** 7 derniers backups conservés
+
+          **Versions :**
+          - PostgreSQL Server : 17.4
+          - pg_dump : 17.x (compatible)
 
           ---
 
